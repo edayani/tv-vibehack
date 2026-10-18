@@ -19,4 +19,57 @@
     <string name="not_available">Auf diesem TV nicht verfügbar</string>
     <string name="cant_open">%1$s lässt sich nicht öffnen</string>
     <string name="date_format">EEEE, d. MMMM</string>
+    <string name="dream_name">Uhr</string>
+    <string name="control_center">Kontrollzentrum</string>
+    <string name="customize_home">Startseite anpassen</string>
+    <string name="dock_size">Dock-Größe</string>
+    <string name="grid_columns">Rasterspalten</string>
+    <string name="tile_spacing">Kachelabstand</string>
+    <string name="artwork">App-Darstellung</string>
+    <string name="wallpaper">Hintergrund</string>
+    <string name="reset_layout">Layout zurücksetzen</string>
+    <string name="reset_layout_message">Ursprüngliches Dock, ausgeblendete Apps und Darstellung wiederherstellen?</string>
+    <string name="pin">Zum Dock hinzufügen</string>
+    <string name="unpin">Aus dem Dock entfernen</string>
+    <string name="move_earlier">Im Dock nach vorne verschieben</string>
+    <string name="move_later">Im Dock nach hinten verschieben</string>
+    <string name="hide_app">Auf der Startseite ausblenden</string>
+    <string name="app_info">App-Info</string>
+    <string name="dock_apps_title">App zum Anpassen auswählen</string>
+    <string name="replace_dock_app">Welche Dock-App ersetzen?</string>
+    <string name="hidden_apps_title">Ausgeblendete Apps (markiert = ausgeblendet)</string>
+    <string name="no_file_picker">Keine Bildauswahl auf diesem TV verfügbar. Wähle stattdessen eine Hintergrundfarbe.</string>
+    <string name="wallpaper_unavailable">Bild nicht verfügbar. Wähle einen anderen Hintergrund.</string>
+    <string name="network_row">Netzwerk · %1$s</string>
+    <string name="bluetooth_row">Bluetooth-Geräte</string>
+    <string name="audio_row">Audioausgabe</string>
+    <string name="airplay_row">AirPlay &amp; HomeKit</string>
+    <string name="cast_row">Übertragung</string>
+    <string name="hdmi_row">HDMI- und TV-Quellen</string>
+    <string name="system_settings">Systemeinstellungen</string>
+    <string name="status_unknown">Systemeinstellungen prüfen</string>
+    <string name="bluetooth_unavailable">Bluetooth ist für diese Startseite nicht zugänglich.</string>
+    <string name="bluetooth_off">Bluetooth ist ausgeschaltet. Öffne die Einstellungen, um Geräte zu verwalten.</string>
+    <string name="paired_devices">Gekoppelte Geräte</string>
+    <string name="bluetooth_device">Bluetooth-Gerät</string>
+    <string name="paired_not_connected">Gekoppelt bedeutet nicht verbunden. Öffne die Bluetooth-Einstellungen, um Verbindungen zu prüfen oder ein Gerät zu koppeln.</string>
+    <string name="bluetooth_settings_status">Öffne die Bluetooth-Einstellungen, um Geräte und Verbindungsstatus anzuzeigen.</string>
+    <string name="audio_available">Von Android gemeldete verfügbare Ausgabegeräte:</string>
+    <string name="audio_routing_note">Dies sind verfügbare Geräte, nicht unbedingt die aktive Ausgabe. Wähle die Ausgabe in den Systemeinstellungen für den Ton.</string>
+    <string name="receiver_unknown">Kein bekanntes Empfängerpaket erkannt. Dein TV kann diese Funktion in einen Herstellerdienst integrieren.</string>
+    <string name="app_enabled">App aktiviert</string>
+    <string name="app_disabled">App deaktiviert</string>
+    <string name="receiver_status_note">Der Paketstatus bestätigt nicht, dass der Empfänger läuft. Prüfe dessen Einstellungen und teste die Übertragung von einem anderen Gerät.</string>
+    <string name="open_settings">Einstellungen öffnen</string>
+    <string name="settings_unavailable">Einstellungen auf diesem TV nicht verfügbar.</string>
+    <string-array name="customize_options">
+        <item>Dock-Apps und Reihenfolge</item><item>Dock-Größe</item><item>Ausgeblendete Apps</item>
+        <item>Rasterspalten</item><item>Kachelabstand</item><item>App-Darstellung</item>
+        <item>Hintergrund</item><item>Layout zurücksetzen</item>
+    </string-array>
+    <string-array name="artwork_options"><item>App-Banner</item><item>App-Symbole</item></string-array>
+    <string-array name="spacing_options"><item>Kompakt</item><item>Normal</item><item>Großzügig</item></string-array>
+    <string-array name="wallpaper_options">
+        <item>Schwarz</item><item>Mitternachtsblau</item><item>Waldgrün</item><item>Pflaume</item><item>Lokales Bild auswählen</item>
+    </string-array>
 </resources>

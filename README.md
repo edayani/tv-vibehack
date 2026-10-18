@@ -58,7 +58,7 @@ Open your assistant, paste the prompt from [`PROMPT.md`](PROMPT.md), and fill in
 
 **3. Follow along**
 Accept the "Allow USB debugging?" prompt when it appears on the TV, then answer the checklist
-questions: which streaming apps you use, which four go in the dock, whether to keep the voice
+questions: which streaming apps you use, which apps go in the dock, whether to keep the voice
 assistant, Chromecast and firmware updates.
 
 That's it. The assistant backs up, debloats, builds and installs the launcher, and checks every
@@ -69,15 +69,15 @@ first time; with this repo as context, people report about fifteen minutes.
 
 A home screen that is yours again:
 
-- **Pitch-black background** and a dock of your four favourite apps at the bottom, in a lighter
+- **A customizable background** and a dock of your favourite apps (2–6 slots) at the bottom, in a lighter
   rounded band, exactly where Apple TV puts it.
 - **A top shelf** showing the focused app's name in large type, with an ambient glow in a colour
   taken from the app's own artwork.
 - **The rest of your apps in a grid** that slides up when you press Down.
 - **One floating glass highlight** that springs from tile to tile instead of each tile drawing its
   own border. The focused tile lifts slightly and shows its name.
-- **Three frosted buttons**: Inputs (a dropdown of HDMI ports, AV and Live TV), Wi-Fi (showing the
-  network you're on) and Settings.
+- **Three frosted buttons**: Inputs (HDMI ports, AV and Live TV), Wi-Fi (connection type) and
+  Control Center for Bluetooth, audio, casting and customization.
 - **A greeting, a large thin clock and the date**, set in
   [Outfit](https://fonts.google.com/specimen/Outfit).
 - **A matching Clock screensaver**, optional, that drifts around the screen so nothing burns in.
@@ -119,15 +119,18 @@ tools/venv/bin/python -I tools/tv.py --probe                 # model, Android ve
 tools/venv/bin/python -I tools/tv.py 'pm list packages'      # run one shell command on the TV
 printf 'cmd1\ncmd2\n' | tools/venv/bin/python -I tools/tv.py --batch   # several, one connection
 
-tools/disable.sh examples/xiaomi-mi-tv-4a/debloat.txt        # apply a debloat list
-tools/restore.sh examples/xiaomi-mi-tv-4a/debloat.txt        # undo it and restore the stock launcher
+tools/disable.sh examples/xiaomi-mi-tv-4a/debloat.txt        # preview; no changes
+tools/disable.sh examples/xiaomi-mi-tv-4a/debloat.txt --apply # apply eligible packages
+tools/venv/bin/python tools/compatibility.py --restore backup/compatibility/<timestamp> # exact rollback
 ```
 
 | Tool | What it does |
 |---|---|
 | [`tools/tv.py`](tools/tv.py) | A pure-Python ADB client: shell, batch, push, pull. Works where the stock `adb` binary is blocked. |
 | [`tools/b64push.py`](tools/b64push.py) | Uploads larger files such as APKs as base64 chunks and verifies the checksum. |
-| [`tools/disable.sh`](tools/disable.sh) / [`tools/restore.sh`](tools/restore.sh) | Apply or undo a debloat list. PowerShell versions sit next to them. |
+| [`tools/compatibility.py`](tools/compatibility.py) | Preview/apply with connectivity protection, a rollback journal and verification. |
+| [`tools/disable.sh`](tools/disable.sh) / [`tools/disable.ps1`](tools/disable.ps1) | Conservative preview; add `--apply` / `-Apply` to change eligible packages. |
+| [`tools/restore.sh`](tools/restore.sh) / [`tools/restore.ps1`](tools/restore.ps1) | Legacy full reset; use the compatibility journal for exact rollback. |
 
 ### Windows
 
@@ -141,8 +144,7 @@ powershell -ExecutionPolicy Bypass -File tools\disable.ps1 -TvHost 192.168.1.50 
 powershell -ExecutionPolicy Bypass -File tools\restore.ps1 -TvHost 192.168.1.50 examples\xiaomi-mi-tv-4a\debloat.txt
 ```
 
-The install script stops before touching the stock launcher if the install or the home-screen
-switch fails. Git Bash also works; the `.sh` scripts detect a Windows venv and disable MSYS path
+The install script retains the stock launcher as a fallback. Git Bash also works; the `.sh` scripts detect a Windows venv and disable MSYS path
 rewriting themselves.
 
 ## The launcher
@@ -152,7 +154,15 @@ AndroidX RecyclerView and nothing heavier. It is built for sets with 1 GB of RAM
 video, no network, no background services.
 
 **Configure** it in [`launcher/app/src/main/res/values/config.xml`](launcher/app/src/main/res/values/config.xml):
-the dock order, apps to hide, your TV's Live TV package, and the number of columns.
+first-launch defaults and OEM integrations such as Live TV and receiver packages.
+
+Open **Control Center → Customize Home** to pin/unpin/reorder or hide/unhide apps, set dock slots
+and grid columns independently, adjust spacing/artwork, and choose solid or local-image wallpapers.
+Long-press OK on an app for its options. Layout changes survive restarts and APK updates.
+
+Control Center also provides Bluetooth devices, audio outputs, AirPlay/HomeKit, casting, HDMI/TV
+inputs and native settings. Receiver package state is informational; verify actual casting on the TV.
+See [compatibility, customization and rollback](docs/COMPATIBILITY.md) for details.
 
 **Build and install** with one command:
 
@@ -229,9 +239,9 @@ goes wrong, `tools/restore.sh` puts everything back, and even without the tools 
 apps from the TV's own settings.
 
 **What about firmware updates?**
-Most lists disable the manufacturer's update service, so updates only arrive when you re-enable
-it on purpose. If an update does land, the worst case is that a package comes back enabled and
-you re-run the script.
+The compatibility tool protects firmware updates, connectivity and remote-control services,
+including visible dependencies. Unknown system packages stay enabled pending review. OEM
+dependencies can be undocumented; preview each list and use the real-TV verification checklist.
 
 **Won't the apps break as their APIs change?**
 The streaming apps still update through the Play Store, which is left alone. The launcher

@@ -15,8 +15,6 @@ import android.media.tv.TvInputManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -55,6 +53,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     static int COLUMNS = 4;
     private static final long MINUTE_MS = 60_000L;
     private String liveTvPkg;
+    private LauncherPreferences preferences;
+    private CustomizeHome customization;
+    private ControlCenter controlCenter;
+    private GridLayoutManager gridLayout;
+    private DockDecoration dockDecoration;
+    private ImageView wallpaper;
+    private final java.util.concurrent.ExecutorService wallpaperLoader = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile int wallpaperGeneration;
 
     private AppAdapter adapter;
     private RecyclerView grid;
@@ -104,10 +110,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         density = getResources().getDisplayMetrics().density;
-        COLUMNS = Math.max(1, getResources().getInteger(R.integer.columns));
+        preferences = new LauncherPreferences(this);
+        COLUMNS = preferences.columns();
         liveTvPkg = getString(R.string.live_tv_package).trim();
 
         root = findViewById(R.id.root);
+        wallpaper = new ImageView(this);
+        wallpaper.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        wallpaper.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        root.addView(wallpaper, 0, new FrameLayout.LayoutParams(-1, -1));
         glass = findViewById(R.id.glass);
         ambient = findViewById(R.id.ambient);
         heroName = findViewById(R.id.heroName);
@@ -121,20 +132,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnWifi = findViewById(R.id.btnWifi);
 
         grid = findViewById(R.id.grid);
-        grid.setLayoutManager(new GridLayoutManager(this, COLUMNS));
+        gridLayout = new GridLayoutManager(this, COLUMNS);
+        grid.setLayoutManager(gridLayout);
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
-        grid.addItemDecoration(new DockDecoration(COLUMNS, density));
+        dockDecoration = new DockDecoration(0, density);
+        grid.addItemDecoration(dockDecoration);
         grid.setLayoutAnimation(new LayoutAnimationController(
                 AnimationUtils.loadAnimation(this, R.anim.tile_enter), 0.06f));
-        adapter = new AppAdapter(this, this, COLUMNS);
+        adapter = new AppAdapter(this, this, preferences);
         grid.setAdapter(adapter);
+        customization = new CustomizeHome(this, preferences, adapter, this::refreshLayout);
+        controlCenter = new ControlCenter(this, this::showInputs, customization::show);
 
         // tvOS layout: push the dock row to the bottom of the screen; the grid hides below until you press Down.
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
-            int dockRow = (int) ((145 + 6 + 12) * density);   // item height plus DockDecoration offsets
-            int want = Math.max(0, h - dockRow - (int) (30 * density));
+            int dockRow = adapter.dockRowHeight();
+            int want = adapter.dockSize() == 0 ? (int) (10 * density) : Math.max(0, h - dockRow - (int) (30 * density));
             if (grid.getPaddingTop() != want) {
                 grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
             }
@@ -161,14 +176,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
         btnInputs.setOnClickListener(v -> showInputs());
-        btnWifi.setOnClickListener(v -> open(new Intent(Settings.ACTION_WIFI_SETTINGS)));
-        btnSettings.setOnClickListener(v -> open(new Intent(Settings.ACTION_SETTINGS)));
+        btnWifi.setOnClickListener(v -> ControlCenter.openSettings(this, new Intent(Settings.ACTION_WIFI_SETTINGS)));
+        btnSettings.setOnClickListener(v -> controlCenter.show());
 
         // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
         // jump to a tile far below when there is nothing in that direction.
         View.OnKeyListener pillKeys = (v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { focusTile(lastFocused); return true; }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT && v.getId() == R.id.btnInputs) return true;
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == R.id.btnSettings;
         };
@@ -194,21 +210,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroShown = false;
         heroName.setAlpha(0f);
         ambient.setAlpha(0f);
-        // Read these before reload(): rebinding can move focus to the first tile and overwrite them.
-        final String returnKey = lastFocusedKey;
-        final int returnSlot = lastFocused;
-        adapter.reload();
+        refreshLayout();
         grid.scheduleLayoutAnimation();
         updateGreeting();
         updateWifiLabel();
         handler.postDelayed(minuteTick, MINUTE_MS);
 
-        // Return to the app we left from, or the same slot if that app is gone. Always refocus: after
-        // reload() the view that holds focus may no longer show the app it had.
-        grid.post(() -> {
-            int pos = adapter.positionOf(returnKey);
-            focusTile(pos >= 0 ? pos : returnSlot);
-        });
     }
 
     @Override
@@ -219,9 +226,90 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm != null) cm.unregisterNetworkCallback(networkCallback);
+        wallpaperGeneration++;
+        wallpaperLoader.shutdownNow();
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != CustomizeHome.PICK_WALLPAPER || result != RESULT_OK || data == null || data.getData() == null) return;
+        android.net.Uri uri = data.getData();
+        try {
+            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            preferences.setWallpaper(uri.toString());
+            refreshLayout();
+        } catch (SecurityException ex) {
+            Toast.makeText(this, R.string.wallpaper_unavailable, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void refreshLayout() {
+        final String focused = lastFocusedKey;
+        final int fallback = lastFocused;
+        COLUMNS = preferences.columns();
+        adapter.reload();
+        int dock = adapter.dockSize();
+        gridLayout.setSpanCount(COLUMNS * Math.max(1, dock));
+        gridLayout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override public int getSpanSize(int position) { return position < dock ? COLUMNS : Math.max(1, dock); }
+        });
+        dockDecoration.setDockSize(dock);
+        grid.invalidateItemDecorations();
+        hideGlass(); hideHero();
+        int position = adapter.positionOf(focused);
+        lastFocused = position >= 0 ? position : Math.max(0, Math.min(fallback, adapter.getItemCount() - 1));
+        grid.post(() -> {
+            if (adapter.getItemCount() == 0) findViewById(R.id.btnSettings).requestFocus();
+            else focusTile(lastFocused);
+        });
+        loadWallpaper();
+    }
+
+    private void loadWallpaper() {
+        root.setBackgroundColor(preferences.background());
+        wallpaper.setImageDrawable(null);
+        String uri = preferences.wallpaper();
+        int generation = ++wallpaperGeneration;
+        if (uri.isEmpty()) return;
+        wallpaperLoader.execute(() -> {
+            if (generation != wallpaperGeneration) return;
+            android.graphics.Bitmap image = null;
+            try {
+                android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+                options.inJustDecodeBounds = true;
+                try (java.io.InputStream stream = getContentResolver().openInputStream(android.net.Uri.parse(uri))) {
+                    android.graphics.BitmapFactory.decodeStream(stream, null, options);
+                }
+                if (options.outWidth <= 0 || options.outHeight <= 0) throw new java.io.IOException("Invalid image");
+                options.inSampleSize = 1;
+                while (options.outWidth / options.inSampleSize > 1280 || options.outHeight / options.inSampleSize > 720)
+                    options.inSampleSize *= 2;
+                options.inJustDecodeBounds = false;
+                try (java.io.InputStream stream = getContentResolver().openInputStream(android.net.Uri.parse(uri))) {
+                    image = android.graphics.BitmapFactory.decodeStream(stream, null, options);
+                }
+            } catch (Exception | OutOfMemoryError ignored) { }
+            android.graphics.Bitmap loaded = image;
+            handler.post(() -> {
+                if (generation != wallpaperGeneration || isDestroyed()) {
+                    if (loaded != null) loaded.recycle();
+                    return;
+                }
+                if (loaded != null) wallpaper.setImageBitmap(loaded);
+                else Toast.makeText(this, R.string.wallpaper_unavailable, Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
+    @Override public void onTileOptions(AppAdapter.Entry entry) { customization.appOptions(entry); }
+
+    @Override public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) { controlCenter.show(); return true; }
+        return super.onKeyUp(keyCode, event);
     }
 
     @Override
@@ -265,7 +353,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y);
         }
         View item = (View) card.getParent();
-        if (position < COLUMNS) {
+        if (position < adapter.dockSize()) {
             // Dock: park it at the bottom of the screen and show the top shelf for this app.
             int decoratedTop = item.getTop() - (int) (6 * density);
             int dy = decoratedTop - grid.getPaddingTop();
@@ -336,17 +424,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public boolean onTileVerticalKey(int position, int keyCode) {
-        int count = adapter.getItemCount();
-        int target;
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
-            target = position - COLUMNS;
-        } else {
-            int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
-            if (position >= lastRowStart) return true;     // already on the last row: stay put
-            target = Math.min(position + COLUMNS, count - 1);
-        }
-        focusTile(target);
+        int target = HomeLayout.vertical(position, keyCode == KeyEvent.KEYCODE_DPAD_UP,
+                adapter.getItemCount(), adapter.dockSize(), COLUMNS);
+        if (target < 0) findViewById(R.id.btnInputs).requestFocus();
+        else focusTile(target);
+        return true;
+    }
+
+    @Override public boolean onTileHorizontalKey(int position, int keyCode) {
+        focusTile(HomeLayout.horizontal(position, keyCode == KeyEvent.KEYCODE_DPAD_LEFT,
+                adapter.getItemCount(), adapter.dockSize(), COLUMNS));
         return true;
     }
 
@@ -361,18 +448,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else card.requestFocus();
             return;
         }
-        // Not laid out yet: scroll there, then focus once the scroll settles.
-        grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
-            @Override
-            public void onScrollStateChanged(@NonNull RecyclerView rv, int newState) {
-                if (newState != RecyclerView.SCROLL_STATE_IDLE) return;
-                rv.removeOnScrollListener(this);
-                RecyclerView.ViewHolder h = rv.findViewHolderForAdapterPosition(pos);
-                View target = h != null ? h.itemView.findViewById(R.id.card) : rv.getChildAt(0);
-                if (target != null) target.requestFocus();
+        // A layout can finish without a scroll-state transition (especially after customization).
+        gridLayout.scrollToPositionWithOffset(pos, 0);
+        grid.post(() -> {
+            RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(pos);
+            if (holder != null) {
+                View card = holder.itemView.findViewById(R.id.card);
+                card.requestFocus();
+                onTileFocused(pos, card);
             }
         });
-        grid.smoothScrollToPosition(pos);
     }
 
     // ---- top bar ---------------------------------------------------------------------------------
@@ -388,7 +473,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         greeting.setText(res);
     }
 
-    /** Shows the Wi-Fi network name on the button when we can read it, otherwise the connection type. */
+    /** Connection type only: no location permission or access to Wi-Fi names. */
     private void updateWifiLabel() {
         String text = getString(R.string.wifi);
         try {
@@ -399,15 +484,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 text = getString(R.string.offline);
             } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
                 text = getString(R.string.ethernet);
-            } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-                WifiInfo info = wm != null ? wm.getConnectionInfo() : null;
-                String ssid = info != null ? info.getSSID() : null;
-                if (ssid != null) {
-                    ssid = ssid.replace("\"", "").trim();
-                    if (!ssid.isEmpty() && !ssid.contains("unknown") && !ssid.equals("0x")) text = ssid;
-                }
-            }
+            } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) text = getString(R.string.wifi);
         } catch (Exception ignored) {
         }
         btnWifi.setText(text);
@@ -417,7 +494,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startActivity(i);
-        } catch (ActivityNotFoundException e) {
+        } catch (ActivityNotFoundException | SecurityException e) {
             Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
         }
     }
@@ -440,7 +517,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         boolean sawNonHdmi = false;
         String tunerId = null;
         if (tim != null) {
-            List<TvInputInfo> inputs = new ArrayList<>(tim.getTvInputList());
+            List<TvInputInfo> inputs;
+            try { inputs = new ArrayList<>(tim.getTvInputList()); }
+            catch (SecurityException ex) { inputs = new ArrayList<>(); }
             // HDMI ports first in port order, then AV and the rest.
             Collections.sort(inputs, (a, b) -> {
                 boolean ha = a.getType() == TvInputInfo.TYPE_HDMI, hb = b.getType() == TvInputInfo.TYPE_HDMI;
@@ -453,7 +532,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             for (TvInputInfo info : inputs) {
                 if (!info.isPassthroughInput() || info.getType() != TvInputInfo.TYPE_HDMI) continue;
                 hdmiPorts++;
-                if (tim.getInputState(info.getId()) == TvInputManager.INPUT_STATE_CONNECTED) hdmiConnected++;
+                try {
+                    if (tim.getInputState(info.getId()) == TvInputManager.INPUT_STATE_CONNECTED) hdmiConnected++;
+                } catch (SecurityException | IllegalArgumentException ignored) { }
             }
             boolean hdmiStateBogus = hdmiPorts > 1 && hdmiConnected == hdmiPorts;
             for (TvInputInfo info : inputs) {
@@ -466,9 +547,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 CharSequence l = info.loadLabel(this);
                 String label = l == null ? info.getId() : l.toString();
                 boolean hdmi = info.getType() == TvInputInfo.TYPE_HDMI;
-                if (hdmi && !label.toUpperCase().contains("HDMI")) label = "HDMI " + label;
+                if (hdmi && !label.toUpperCase(java.util.Locale.ROOT).contains("HDMI")) label = "HDMI " + label;
                 final String id = info.getId();
-                int state = hdmi && hdmiStateBogus ? -1 : tim.getInputState(id);
+                int state;
+                try { state = hdmi && hdmiStateBogus ? -1 : tim.getInputState(id); }
+                catch (SecurityException | IllegalArgumentException ex) { state = -1; }
                 if (!hdmi && rows.getChildCount() > 0 && !sawNonHdmi) addSeparator(rows);
                 if (!hdmi) sawNonHdmi = true;
                 addInputRow(rows, popup, hdmi ? R.drawable.ic_input : R.drawable.ic_av, label, state,
@@ -488,7 +571,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             addInputRow(rows, popup, R.drawable.ic_livetv, getString(R.string.live_tv), -1, () -> open(liveTvIntent));
         }
         if (rows.getChildCount() == 0) {
-            Toast.makeText(this, R.string.no_inputs, Toast.LENGTH_SHORT).show();
+            ControlCenter.openSettings(this, new Intent(Settings.ACTION_SETTINGS));
             return;
         }
 

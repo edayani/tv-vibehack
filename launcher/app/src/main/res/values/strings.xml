@@ -20,4 +20,56 @@
     <string name="cant_open">Can\'t open %1$s</string>
     <string name="date_format">EEEE  d MMMM</string>
     <string name="dream_name">Clock</string>
+    <string name="control_center">Control Center</string>
+    <string name="customize_home">Customize Home</string>
+    <string name="dock_size">Dock size</string>
+    <string name="grid_columns">Grid columns</string>
+    <string name="tile_spacing">Tile spacing</string>
+    <string name="artwork">App artwork</string>
+    <string name="wallpaper">Wallpaper</string>
+    <string name="reset_layout">Reset layout</string>
+    <string name="reset_layout_message">Restore the original dock, hidden apps and appearance?</string>
+    <string name="pin">Pin to dock</string>
+    <string name="unpin">Unpin from dock</string>
+    <string name="move_earlier">Move earlier in dock</string>
+    <string name="move_later">Move later in dock</string>
+    <string name="hide_app">Hide app from Home</string>
+    <string name="app_info">App info</string>
+    <string name="dock_apps_title">Choose an app to customize</string>
+    <string name="replace_dock_app">Replace which dock app?</string>
+    <string name="hidden_apps_title">Hidden apps (checked = hidden)</string>
+    <string name="no_file_picker">No image picker on this TV. Choose a solid background instead.</string>
+    <string name="wallpaper_unavailable">Image unavailable. Choose another wallpaper.</string>
+    <string name="network_row">Network · %1$s</string>
+    <string name="bluetooth_row">Bluetooth devices</string>
+    <string name="audio_row">Audio output</string>
+    <string name="airplay_row">AirPlay &amp; HomeKit</string>
+    <string name="cast_row">Casting</string>
+    <string name="hdmi_row">HDMI &amp; TV inputs</string>
+    <string name="system_settings">System settings</string>
+    <string name="status_unknown">Check system settings</string>
+    <string name="bluetooth_unavailable">Bluetooth is not exposed to this launcher.</string>
+    <string name="bluetooth_off">Bluetooth is off. Open settings to manage devices.</string>
+    <string name="paired_devices">Paired devices</string>
+    <string name="bluetooth_device">Bluetooth device</string>
+    <string name="paired_not_connected">Paired does not mean connected. Open Bluetooth settings to check connections or pair a device.</string>
+    <string name="bluetooth_settings_status">Open Bluetooth settings to view devices and connection status.</string>
+    <string name="audio_available">Available outputs reported by Android:</string>
+    <string name="audio_routing_note">These are available devices, not the active route. Choose the output in native sound settings.</string>
+    <string name="receiver_unknown">No known receiver package detected. Your TV may integrate it into a manufacturer service.</string>
+    <string name="app_enabled">App enabled</string>
+    <string name="app_disabled">App disabled</string>
+    <string name="receiver_status_note">Package state does not confirm the receiver is running. Check receiver settings, then test casting from another device.</string>
+    <string name="open_settings">Open settings</string>
+    <string name="settings_unavailable">Settings are not available on this TV.</string>
+    <string-array name="customize_options">
+        <item>Dock apps &amp; order</item><item>Dock size</item><item>Hidden apps</item>
+        <item>Grid columns</item><item>Tile spacing</item><item>App artwork</item>
+        <item>Wallpaper</item><item>Reset layout</item>
+    </string-array>
+    <string-array name="artwork_options"><item>App banners</item><item>App icons</item></string-array>
+    <string-array name="spacing_options"><item>Compact</item><item>Comfortable</item><item>Spacious</item></string-array>
+    <string-array name="wallpaper_options">
+        <item>Black</item><item>Midnight blue</item><item>Forest</item><item>Plum</item><item>Choose a local image</item>
+    </string-array>
 </resources>
