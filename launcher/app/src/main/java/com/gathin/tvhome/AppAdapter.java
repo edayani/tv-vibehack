@@ -1,6 +1,5 @@
 package com.gathin.tvhome;
 
-import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -12,8 +11,6 @@ import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.net.Uri;
-import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -28,15 +25,13 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * App tiles. The first {@link MainActivity#COLUMNS} positions are the pinned dock (favourites, fixed order),
- * the rest is alphabetical.
+ * App tiles. Visible pins lead in saved order, followed by the alphabetical app grid.
  */
 public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
 
@@ -45,6 +40,8 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
 
         /** Called for D-pad Up/Down on a tile. Return true when handled. */
         boolean onTileVerticalKey(int position, int keyCode);
+        boolean onTileHorizontalKey(int position, int keyCode);
+        void onTileOptions(Entry entry);
     }
 
     static final class Entry {
@@ -68,50 +65,52 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
 
     private final Context ctx;
     private final TileListener listener;
-    private final int dockSize;
+    private int dockSize;
+    private final LauncherPreferences preferences;
+    private final List<Entry> catalog = new ArrayList<>();
     /** Dock order (res/values/config.xml, dock_apps). */
-    private final List<String> favourites;
+    private List<String> favourites;
     /** Never shown as tiles (res/values/config.xml, hidden_apps). */
-    private final Set<String> hidden;
+    private Set<String> hidden;
     private final List<Entry> items = new ArrayList<>();
 
-    AppAdapter(Context ctx, TileListener listener, int dockSize) {
+    AppAdapter(Context ctx, TileListener listener, LauncherPreferences preferences) {
         this.ctx = ctx;
         this.listener = listener;
-        this.dockSize = dockSize;
-        this.favourites = Arrays.asList(ctx.getResources().getStringArray(R.array.dock_apps));
-        this.hidden = new HashSet<>(Arrays.asList(ctx.getResources().getStringArray(R.array.hidden_apps)));
-        // Tiles keep their identity across reload(), so a focused tile stays on its app instead of
-        // its view being rebound to whatever app now sits in that slot.
+        this.preferences = preferences;
         setHasStableIds(true);
     }
 
     void reload() {
+        favourites = preferences.dock();
+        hidden = preferences.hidden();
         PackageManager pm = ctx.getPackageManager();
         Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
         List<ResolveInfo> found = pm.queryIntentActivities(probe, 0);
         List<Entry> fresh = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
         for (ResolveInfo ri : found) {
             if (ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(ctx.getPackageName()) || hidden.contains(pkg)) continue;
+            if (pkg.equals(ctx.getPackageName()) || !seen.add(pkg)) continue;
             Drawable banner = ri.activityInfo.loadBanner(pm);
             if (banner == null) banner = ri.activityInfo.applicationInfo.loadBanner(pm);
             Drawable icon = ri.loadIcon(pm);
             String label = String.valueOf(ri.loadLabel(pm));
             fresh.add(new Entry(label, new ComponentName(pkg, ri.activityInfo.name), banner, icon));
         }
-        Collections.sort(fresh, (a, b) -> {
-            int fa = favourites.indexOf(a.pkg), fb = favourites.indexOf(b.pkg);
-            if (fa >= 0 || fb >= 0) {
-                if (fa < 0) return 1;
-                if (fb < 0) return -1;
-                return Integer.compare(fa, fb);
-            }
-            return a.label.compareToIgnoreCase(b.label);
-        });
+        Collections.sort(fresh, (a, b) -> a.label.compareToIgnoreCase(b.label));
+        catalog.clear();
+        catalog.addAll(fresh);
+        List<String> installed = new ArrayList<>();
+        for (Entry entry : fresh) installed.add(entry.pkg);
+        List<String> ordered = HomeLayout.order(installed, favourites, hidden);
+        dockSize = HomeLayout.dockCount(ordered, favourites, preferences.dockSlots());
         items.clear();
-        items.addAll(fresh);
+        // Only the selected number of pins occupies the dock; extra pins remain in the grid.
+        for (String pkg : ordered) {
+            for (Entry entry : fresh) if (entry.pkg.equals(pkg)) { items.add(entry); break; }
+        }
         notifyDataSetChanged();
     }
 
@@ -125,13 +124,26 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     @Override
     public void onBindViewHolder(@NonNull Holder h, int position) {
         Entry e = items.get(position);
+        h.card.setContentDescription(e.label);
+        int columns = position < dockSize ? dockSize : preferences.columns();
+        int spacing = (int) (preferences.spacing() * ctx.getResources().getDisplayMetrics().density);
+        int width = tileWidth(columns);
+        ViewGroup.LayoutParams cardParams = h.card.getLayoutParams();
+        cardParams.width = width;
+        cardParams.height = width * 9 / 16;
+        h.card.setLayoutParams(cardParams);
+        android.widget.FrameLayout.LayoutParams nameParams = (android.widget.FrameLayout.LayoutParams) h.name.getLayoutParams();
+        nameParams.width = width;
+        nameParams.topMargin = cardParams.height + (int) (7 * ctx.getResources().getDisplayMetrics().density);
+        h.name.setLayoutParams(nameParams);
+        h.itemView.setPadding(spacing, spacing, spacing, spacing);
         h.name.setText(e.label);
         h.name.setVisibility(position < dockSize ? View.INVISIBLE : View.VISIBLE);   // the dock has no labels
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
         h.name.setAlpha(focused ? 1f : 0f);
         h.card.setScaleX(focused ? FOCUS_SCALE : 1f);
         h.card.setScaleY(focused ? FOCUS_SCALE : 1f);
-        if (e.banner != null) {
+        if (e.banner != null && !preferences.icons()) {
             h.banner.setImageDrawable(e.banner);
             h.banner.setVisibility(View.VISIBLE);
             h.icon.setVisibility(View.GONE);
@@ -146,12 +158,7 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         }
         h.card.setOnClickListener(v -> launch(e));
         h.card.setOnLongClickListener(v -> {
-            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                ctx.startActivity(i);
-            } catch (ActivityNotFoundException ignored) {
-            }
+            listener.onTileOptions(e);
             return true;
         });
     }
@@ -195,6 +202,19 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     String labelAt(int position) {
         return position >= 0 && position < items.size() ? items.get(position).label : "";
     }
+
+    int dockSize() { return dockSize; }
+    private int tileWidth(int columns) {
+        float density = ctx.getResources().getDisplayMetrics().density;
+        int available = ctx.getResources().getDisplayMetrics().widthPixels - (int) (112 * density);
+        return Math.max((int) (48 * density), Math.min((int) (210 * density),
+                available / Math.max(1, columns) - (int) (preferences.spacing() * density) * 2));
+    }
+    int dockRowHeight() {
+        float density = ctx.getResources().getDisplayMetrics().density;
+        return tileWidth(dockSize) * 9 / 16 + (int) ((29 + preferences.spacing() * 2 + 18) * density);
+    }
+    List<Entry> catalog() { return new ArrayList<>(catalog); }
 
     /** A vivid colour sampled from the app's banner (or icon), cached per entry. */
     int ambientColorAt(int position) {
@@ -273,9 +293,13 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
 
             card.setOnKeyListener((view, keyCode, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                if (keyCode != KeyEvent.KEYCODE_DPAD_UP && keyCode != KeyEvent.KEYCODE_DPAD_DOWN) return false;
                 int pos = getBindingAdapterPosition();
-                return listener != null && pos != RecyclerView.NO_POSITION && listener.onTileVerticalKey(pos, keyCode);
+                if (listener == null || pos == RecyclerView.NO_POSITION) return false;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
+                    return listener.onTileVerticalKey(pos, keyCode);
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+                    return listener.onTileHorizontalKey(pos, keyCode);
+                return false;
             });
 
             card.setOnFocusChangeListener((view, focused) -> {
