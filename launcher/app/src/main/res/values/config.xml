@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Launcher configuration. Edit this file, then run launcher/build-and-install.sh.
+  First-launch defaults. Customize Home on the TV overrides these without rebuilding.
   Package names: on the TV run `pm list packages` (tools/tv.py 'pm list packages').
 -->
 <resources>
@@ -22,6 +22,14 @@
     <!-- The TV's Live TV / tuner app, offered at the end of the Inputs menu. Leave empty to omit. -->
     <string name="live_tv_package" translatable="false">com.mediatek.wwtv.tvcenter</string>
 
-    <!-- Tiles per row in the grid; the dock always has this many slots. -->
+    <!-- Initial grid columns and dock slots; the TV can change them independently. -->
     <integer name="columns">4</integer>
+
+    <!-- Optional OEM receiver packages. Detection is informational, not a receiver health check. -->
+    <string-array name="airplay_packages">
+        <item>com.sony.dtv.airplayapp</item>
+        <item>com.sony.dtv.airplay</item>
+        <item>com.ionitech.airscreen</item>
+    </string-array>
+    <string-array name="cast_packages"><item>com.google.android.apps.mediashell</item></string-array>
 </resources>
